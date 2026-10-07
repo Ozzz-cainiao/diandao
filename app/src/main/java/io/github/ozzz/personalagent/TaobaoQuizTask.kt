@@ -4,6 +4,7 @@ package io.github.ozzz.personalagent
 internal object TaobaoQuizTask {
     private const val PACKAGE = "com.taobao.taobao"
     private val answers = mapOf(
+        "1. 为什么手机屏幕沾上水会影响触控效果单选题" to "水能导电",
         "1. 猜一猜：成语“白云苍狗”的典故与哪位诗人有关单选题" to "杜甫",
         "1. 猜一猜：土豆为什么得名马铃薯单选题" to "与马铃铛有关",
     )
@@ -16,7 +17,8 @@ internal object TaobaoQuizTask {
     fun run(runtime: AutomationRuntime, read: () -> UiSnapshot): UiSnapshot {
         var page = read()
         for (attempt in 1..6) {
-            if (page.findExact("我选好了") != null) break
+            if (page.findExact("淘金币趣味答题") != null &&
+                page.nodes.any { it.usable && it.text.endsWith("单选题") }) break
             runtime.pause(750)
             page = read()
         }

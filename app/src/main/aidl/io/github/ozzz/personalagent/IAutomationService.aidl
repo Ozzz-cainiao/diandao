@@ -14,4 +14,5 @@ interface IAutomationService {
     Bundle swipe(String expectedPackage, int startX, int startY, int endX, int endY, int durationMs) = 6;
     Bundle back(String expectedPackage) = 7;
     ParcelFileDescriptor captureScreen(String expectedPackage) = 8;
+    Bundle visitAndReturn(String expectedPackage, int x, int y, String visitPackage, String title) = 9;
 }

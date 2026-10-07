@@ -2,6 +2,9 @@ package io.github.ozzz.personalagent
 
 /** Small synchronous task API; implemented by the client on its worker thread. */
 interface AutomationRuntime {
+    fun visitAndReturn(packageName: String, x: Int, y: Int, visitPackage: String, title: String) {
+        error("当前Runtime不支持跨App访问")
+    }
     fun back(expectedPackage: String)
     fun returnHome(expectedPackage: String)
     fun launch(packageName: String)

@@ -12,11 +12,12 @@ class TaobaoFarmTaskTest {
         var launches = 0
         var cancelled = false
         override fun launch(packageName: String) { assertEquals("com.taobao.taobao", packageName); launches++ }
-        override fun readUi(packageName: String): String {
+        override fun readUi(packageName: String): String = error("跨App访问由远端完成，不在App中轮询")
+        override fun visitAndReturn(packageName: String, x: Int, y: Int, visitPackage: String, title: String) {
             reads++
-            assertEquals("com.eg.android.AlipayGphone", packageName)
             if (cancelled) error("任务已取消")
-            return "<hierarchy><node text=\"$label\" bounds=\"0,0,100,100\" enabled=\"true\" visible=\"true\"/></hierarchy>"
+            check(label == title) { "访问标题不符" }
+            launches++
         }
         override fun tap(packageName: String, x: Int, y: Int) = error("no taps in Alipay")
         override fun back(expectedPackage: String) = error("no back in Alipay")
@@ -29,21 +30,21 @@ class TaobaoFarmTaskTest {
         val runtime = Runtime()
         var reads = 0
         val done = page("今日速赚", "今日快速赚奖励已拿完")
-        assertEquals(done, TaobaoFarmTask.run(runtime) { if (reads++ == 0) page("今日速赚") else done })
+        assertEquals(done, TaobaoFarmTask.run(runtime, page("入口").nodes[0]) { if (reads++ == 0) page("今日速赚") else done })
         assertEquals(1, runtime.launches)
     }
     @Test fun unknownAlipayPageStops() {
         val runtime = Runtime("支付宝")
-        assertTrue(runCatching { TaobaoFarmTask.run(runtime) { page() } }.isFailure)
+        assertTrue(runCatching { TaobaoFarmTask.run(runtime, page("入口").nodes[0]) { page() } }.isFailure)
         assertEquals(0, runtime.launches)
     }
     @Test fun cancellationIsNotRetried() {
         val runtime = Runtime().apply { cancelled = true }
-        assertTrue(runCatching { TaobaoFarmTask.run(runtime) { page() } }.isFailure)
+        assertTrue(runCatching { TaobaoFarmTask.run(runtime, page("入口").nodes[0]) { page() } }.isFailure)
         assertEquals(1, runtime.reads)
     }
     @Test fun visitAloneDoesNotClaimRewardSuccess() {
-        assertTrue(runCatching { TaobaoFarmTask.run(Runtime()) { page("今日速赚") } }.isFailure)
+        assertTrue(runCatching { TaobaoFarmTask.run(Runtime(), page("入口").nodes[0]) { page("今日速赚") } }.isFailure)
         assertFalse(TaobaoQuickTask.allDone(page("今日快速赚奖励已拿完")))
     }
 }

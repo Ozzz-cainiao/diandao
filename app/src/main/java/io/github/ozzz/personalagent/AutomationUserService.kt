@@ -10,6 +10,37 @@ import kotlin.system.exitProcess
 /** Instantiated by Shizuku in a separate shell/root process, not an Android Service. */
 class AutomationUserService : IAutomationService.Stub() {
     @Synchronized
+    override fun visitAndReturn(expectedPackage: String, x: Int, y: Int, visitPackage: String, title: String): Bundle {
+        val started = SystemClock.elapsedRealtime()
+        return try {
+            require(LaunchProtocol.validPackage(expectedPackage) && LaunchProtocol.validPackage(visitPackage))
+            require(expectedPackage != visitPackage && title.isNotBlank() && title.length <= 100)
+            val clicked = tap(expectedPackage, x, y)
+            check(clicked.getBoolean("success")) { clicked.getString("error").orEmpty() }
+            var arrived = false
+            for (attempt in 1..10) {
+                SystemClock.sleep(500)
+                val foreground = CommandRunner.run(listOf("/system/bin/dumpsys", "activity", "activities"), 1500, 256000)
+                if (TapProtocol.isForeground(visitPackage, foreground)) { arrived = true; break }
+            }
+            check(arrived) { "未确认跳转到访问目标" }
+            val identity = Binder.clearCallingIdentity()
+            val page = try { UiSnapshot.parse(UiHierarchyReader.read(visitPackage)) }
+                finally { Binder.restoreCallingIdentity(identity) }
+            check(page.findExact(title) != null) { "访问页面标题不符，不操作其他页面" }
+            Log.i("PersonalAgent", "VISIT_CONFIRMED package=$visitPackage title=$title")
+            SystemClock.sleep(1500)
+            val foreground = CommandRunner.run(listOf("/system/bin/dumpsys", "activity", "activities"), 1500, 256000)
+            check(TapProtocol.isForeground(visitPackage, foreground)) { "访问目标已离开前台，不抢占用户页面" }
+            val launched = launchApp(expectedPackage)
+            check(launched.getBoolean("success")) { "访问已确认，但返回原App失败" }
+            Bundle().apply { putBoolean("success", true); putInt("exitCode", 0) }
+        } catch (e: Exception) {
+            Bundle().apply { putBoolean("success", false); putInt("exitCode", -1); putString("error", e.message) }
+        }.apply { putLong("elapsedMs", SystemClock.elapsedRealtime() - started) }
+    }
+
+    @Synchronized
     override fun captureScreen(expectedPackage: String): android.os.ParcelFileDescriptor {
         require(LaunchProtocol.validPackage(expectedPackage))
         val foreground = CommandRunner.run(listOf("/system/bin/dumpsys", "activity", "activities"), 3000, 256000)

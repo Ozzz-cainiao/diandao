@@ -231,6 +231,8 @@ class ShizukuRuntimeClient(
                     log("[$name] exit=${value.getInt("exitCode")} 耗时=${value.getLong("elapsedMs")}ms")
                     check(value.getBoolean("success")) { "$name 失败：${value.getString("error")}; ${value.getString("stderr")}" }
                 }
+                override fun visitAndReturn(packageName: String, x: Int, y: Int, visitPackage: String, title: String) =
+                    command("访问 $visitPackage 并返回") { service.visitAndReturn(packageName, x, y, visitPackage, title) }
                 override fun back(expectedPackage: String) = command("返回任务面板") { service.back(expectedPackage) }
                 override fun returnHome(expectedPackage: String) {
                     checkActive()

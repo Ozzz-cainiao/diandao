@@ -25,6 +25,12 @@ class TaobaoQuizTaskTest {
     @Test fun selectsAnswerTextEvenWhenOrderChanges() {
         assertEquals(1025, TaobaoQuizTask.answer(question()).y)
     }
+    @Test fun waterTouchscreenQuestionSelectsConductivityByText() {
+        val question = UiSnapshot(listOf(node("淘金币趣味答题"),
+            node("1. 为什么手机屏幕沾上水会影响触控效果单选题"),
+            node("水能溶解屏幕", 100, 800), node("水能导电", 100, 1000)))
+        assertEquals("水能导电", TaobaoQuizTask.answer(question).text)
+    }
     @Test fun unknownQuestionNeverClicks() {
         val runtime = Runtime()
         assertTrue(runCatching { TaobaoQuizTask.run(runtime) { UiSnapshot(listOf(node("淘金币趣味答题"), node("未知题目"))) } }.isFailure)

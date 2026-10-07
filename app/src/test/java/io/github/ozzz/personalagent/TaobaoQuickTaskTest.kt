@@ -4,6 +4,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TaobaoQuickTaskTest {
+    @Test fun overlappingRewardLayersStillConfirmSameThirty() {
+        val page = UiSnapshot(listOf(
+            UiNode("已得", "", "", 919, 1386, 981, 1428, false, true, true),
+            UiNode("30", "", "", 975, 1386, 1015, 1423, false, true, true),
+            UiNode("30", "", "", 981, 1414, 1023, 1451, false, true, true)))
+        assertTrue(TaobaoQuickTask.browseRewardEarned(page))
+    }
     @Test fun recognizesObservedVideoPageWithoutPurchaseButtons() {
         val root = UiNode("", "", "", 0, 0, 1080, 2400, false, true, true)
         val content = root.copy(description = "图片，按钮。双击可进入详情页。", bottom = 2191)
@@ -141,6 +148,14 @@ class TaobaoQuickTaskTest {
         val page = UiSnapshot(listOf(node("好物沉浸看", 100, 100), target, node("+30", 500, 300)))
         assertEquals(target, TaobaoQuickTask.reward(page, "好物沉浸看", "+30"))
         assertNull(TaobaoQuickTask.reward(page, "未知任务", "+30"))
+    }
+    @Test fun renamedVideoUsesBrowseSubtitleAndItsOwnRewardRow() {
+        val title = node("看看#卫生抽纸", 196, 675)
+        val amount = node("+30", 883, 669)
+        val subtitle = node("浏览15秒", 196, 739)
+        assertEquals(amount, TaobaoQuickTask.videoReward(UiSnapshot(listOf(title, amount, subtitle))))
+        assertNull(TaobaoQuickTask.videoReward(UiSnapshot(listOf(title, amount))))
+        assertNull(TaobaoQuickTask.videoReward(UiSnapshot(listOf(title, amount.copy(top = 880, bottom = 930), subtitle))))
     }
     @Test fun ambiguousRewardsAreRejected() {
         val page = UiSnapshot(listOf(node("好物沉浸看", 100, 100), node("+30", 500, 100), node("+30", 650, 100)))

@@ -19,22 +19,25 @@ object TaobaoCoinTask {
     }
 
     fun run(runtime: AutomationRuntime, record: (String) -> Unit = {}, initialPage: UiSnapshot? = null): String {
-        fun read(): UiSnapshot {
-            val xml = runtime.readUi(PACKAGE)
-            record(xml)
-            return UiSnapshot.parse(xml)
-        }
+        fun read(): UiSnapshot = TaobaoPageReader.read(runtime, record)
         var page = initialPage ?: run {
             runtime.log("[状态] 启动淘宝")
             runtime.launch(PACKAGE)
             runtime.pause(2500)
             read()
         }
-        page.findExact("领淘金币")?.let {
-            runtime.log("[状态] 进入淘金币")
-            runtime.tap(PACKAGE, it.x, it.y)
-            runtime.pause(2500)
+        for (attempt in 1..3) {
+            if (page.findExact("淘金币标题") != null) break
+            val entry = page.findExact("领淘金币") ?: break
+            runtime.log("[状态] 进入淘金币 $attempt/3")
+            runtime.tap(PACKAGE, entry.x, entry.y)
+            runtime.pause(1500)
             page = read()
+            for (loading in 1..3) {
+                if (page.findExact("淘金币标题") != null || page.findExact("领淘金币") != null) break
+                runtime.pause(500)
+                page = read()
+            }
         }
         check(page.findExact("淘金币标题") != null) { "未确认淘金币页面，请手动回到淘宝首页后重试" }
         if (claimed(page)) return "今日已签到，无需重复领取"

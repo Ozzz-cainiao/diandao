@@ -19,11 +19,13 @@ internal class PageBudget(private val now: () -> Long, private val limitMs: Long
         fun key(packageName: String, page: UiSnapshot): String {
             val kind = when {
                 page.findExact("今日速赚") != null -> "快速赚面板"
+                page.findExact("搜索有福利") != null -> "搜索福利入口"
+                page.findExact("金币-固搜-interact") != null -> "搜索浏览"
                 page.findExact("淘宝购物清单") != null -> "清单浏览"
                 page.findExact("淘金币趣味答题") != null -> "趣味课堂"
                 page.findExact("蚂蚁庄园") != null -> "蚂蚁庄园"
                 page.findExact("淘金币标题") != null -> "每日签到"
-                page.nodes.any { it.usable && it.named("图片，按钮。双击可进入详情页。") } -> "商品视频"
+                page.nodes.any { it.usable && (it.named("图片，按钮。双击可进入详情页。") || it.named("视频，按钮。双击可暂停或播放视频。")) } -> "商品视频"
                 page.findExact("领淘金币") != null -> "淘宝首页"
                 else -> "未识别/加载"
             }

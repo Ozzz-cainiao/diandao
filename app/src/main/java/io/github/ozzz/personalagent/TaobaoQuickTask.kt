@@ -10,17 +10,27 @@ object TaobaoQuickTask {
         if (page.findExact("已得30") != null || page.findExact("已得 30") != null) return true
         return page.nodes.filter { it.usable && it.named("已得") }.any { label ->
             val height = label.bottom - label.top
-            page.nodes.count { amount ->
+            page.nodes.any { amount ->
                 amount.usable && amount.named("30") && amount.x > label.x &&
                     amount.left >= label.right - height / 2 && amount.left <= label.right + height &&
                     amount.top < label.bottom && amount.bottom > label.top
-            } == 1
+            }
         }
     }
     internal fun reward(page: UiSnapshot, title: String, amount: String): UiNode? {
         val label = page.findExact(title) ?: return null
         return page.nodes.filter { it.usable && it.named(amount) && it.left > label.right &&
             it.top <= label.bottom && it.bottom >= label.top }.singleOrNull()
+    }
+
+    internal fun videoReward(page: UiSnapshot): UiNode? {
+        val candidates = page.nodes.filter { label ->
+            label.usable && (label.named("好物沉浸看") ||
+                (label.text.startsWith("看看#") && page.nodes.any { subtitle ->
+                    subtitle.usable && subtitle.named("浏览15秒") && subtitle.left == label.left &&
+                        subtitle.top >= label.bottom && subtitle.top <= label.bottom + 100 }))
+        }.mapNotNull { reward(page, it.text, "+30") }
+        return candidates.singleOrNull()
     }
 
     fun runAndReturnHome(runtime: AutomationRuntime, record: (String) -> Unit = {}): String {
@@ -36,7 +46,8 @@ object TaobaoQuickTask {
         val root = checkNotNull(page.nodes.firstOrNull { it.usable && it.left == 0 && it.top == 0 }) {
             "未确认屏幕边界，停止滑动"
         }
-        val videoContent = page.nodes.any { it.usable && it.named("图片，按钮。双击可进入详情页。") &&
+        val videoContent = page.nodes.any { it.usable && (it.named("图片，按钮。双击可进入详情页。") ||
+                it.named("视频，按钮。双击可暂停或播放视频。")) &&
             it.left <= root.right * 0.46 && it.right >= root.right * 0.46 &&
             it.top <= root.bottom * 0.36 && it.bottom >= root.bottom * 0.58 }
         check(videoContent || (page.findExact("加入购物车") != null && page.findExact("立即购买") != null)) {
@@ -70,16 +81,19 @@ object TaobaoQuickTask {
     }
 
     fun run(runtime: AutomationRuntime, record: (String) -> Unit = {}): String {
-        fun read(): UiSnapshot {
-            val xml = runtime.readUi(PACKAGE)
-            record(xml)
-            return UiSnapshot.parse(xml)
-        }
+        fun read(): UiSnapshot = TaobaoPageReader.read(runtime, record)
         fun tap(node: UiNode) = runtime.tap(PACKAGE, node.x, node.y)
         runtime.log("[快速赚] 进入淘金币")
         runtime.launch(PACKAGE)
         runtime.pause(2500)
-        val initial = read()
+        var initial = read()
+        if (browseRewardEarned(initial)) {
+            runtime.log("[快速赚] 恢复已得30页面，返回面板核对")
+            runtime.back(PACKAGE)
+            runtime.pause(1000)
+            initial = read()
+            check(initial.findExact("今日速赚") != null) { "浏览奖励恢复后未回到面板" }
+        }
         if (TaobaoListTask.finalRewardShown(initial)) {
             runtime.log("[清单] 恢复已完成页面：累计60，返回面板核对")
             runtime.back(PACKAGE)
@@ -132,7 +146,7 @@ object TaobaoQuickTask {
             quiz = true
         }
         val summary = (if (quiz) "课堂领奖已确认；" else "") + "本次清单完成${listCount}轮；" + if (arrival) "到访任务已完成；" else ""
-        val video = reward(page, "好物沉浸看", "+30")
+        val video = videoReward(page)
         var videoResult = ""
         if (video != null) {
             runtime.log("[快速赚] 进入好物沉浸看，分段滑动并检查奖励（最多10次）")
@@ -144,10 +158,15 @@ object TaobaoQuickTask {
             page = read()
             check(page.findExact("今日速赚") != null) { "视频奖励已确认，但未回到任务面板，停止" }
         }
+        (reward(page, "搜一搜你心仪的宝贝", "+30")
+            ?: reward(page, "发现精选好物", "+30"))?.let {
+            tap(it)
+            runtime.pause(1000)
+            page = TaobaoSearchTask.run(runtime, ::read)
+        }
         reward(page, "去蚂蚁庄园逛逛哟", "+50")?.let {
             runtime.log("[庄园] 从任务入口访问一次")
-            tap(it)
-            page = TaobaoFarmTask.run(runtime, ::read)
+            page = TaobaoFarmTask.run(runtime, it, ::read)
         }
         return summary + videoResult + if (allDone(page)) "淘宝确认：今日快速赚奖励已拿完" else
             "当前无其他支持的待领奖任务；未知任务未执行"
