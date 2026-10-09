@@ -11,8 +11,8 @@ android {
         applicationId = "io.github.ozzz.personalagent"
         minSdk = 28
         targetSdk = 36
-        versionCode = 14
-        versionName = "0.0.14-preview"
+        versionCode = 15
+        versionName = "0.0.15-preview"
     }
     buildFeatures {
         aidl = true

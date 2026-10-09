@@ -63,9 +63,12 @@ class ShizukuRuntimeClient(
         override fun onServiceDisconnected(name: ComponentName) {
             if (closed || activeConnection !== this) return
             generation++
+            taskFuture?.cancel(true)
+            taskFuture = null
+            if (busy) diagnostics?.status("远端服务停止：可能达到执行截止或意外断开；未确认任务成功，查看日志")
             remote = null
             finish()
-            report("[断开] UserService 已断开，可重新测试。")
+            report("[断开] UserService 已停止，可能达到执行截止或意外断开；未确认任务成功。")
         }
     }
 
@@ -187,6 +190,7 @@ class ShizukuRuntimeClient(
         main.postDelayed(timeout, 120_000)
         val attempt = ++generation
         val evidence = diagnostics
+        val taskDeadline = android.os.SystemClock.elapsedRealtime() + 120_000
         val budget = PageBudget(android.os.SystemClock::elapsedRealtime)
         fun armPageTimeout() {
             main.post {
@@ -211,6 +215,9 @@ class ShizukuRuntimeClient(
             fun checkActive() {
                 check(!closed && generation == attempt && !Thread.currentThread().isInterrupted) { "任务已取消" }
                 budget.check()
+                val now = android.os.SystemClock.elapsedRealtime()
+                check(now < taskDeadline) { "总任务120秒超时" }
+                service.armDeadline(minOf(taskDeadline, now + budget.remaining()))
             }
             var lastPackage: String? = null
             fun capture(reason: String) {
@@ -377,6 +384,8 @@ class ShizukuRuntimeClient(
         requestedPackage = null
         requestedTap = null
         requestedTask = null
+        releaseService()
+        remote = null
         if (!closed) busyChanged(false)
     }
 

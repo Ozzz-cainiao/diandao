@@ -9,12 +9,25 @@ import kotlin.system.exitProcess
 
 /** Instantiated by Shizuku in a separate shell/root process, not an Android Service. */
 class AutomationUserService : IAutomationService.Stub() {
+    private val deadline = RemoteDeadline(SystemClock::elapsedRealtime)
+    private val watchdog = java.util.concurrent.Executors.newSingleThreadScheduledExecutor().apply {
+        scheduleAtFixedRate({
+            if (deadline.expired()) {
+                Log.e("PersonalAgent", "REMOTE_DEADLINE_EXPIRED pid=${Process.myPid()}; terminating service")
+                exitProcess(1)
+            }
+        }, 100, 100, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+    // Never acquire the UserService monitor: a stalled UI read must not block the watchdog.
+    override fun armDeadline(deadlineElapsedMs: Long) = deadline.arm(deadlineElapsedMs)
+
     @Synchronized
     override fun visitAndReturn(expectedPackage: String, x: Int, y: Int, visitPackage: String, title: String): Bundle {
         val started = SystemClock.elapsedRealtime()
         return try {
             require(LaunchProtocol.validPackage(expectedPackage) && LaunchProtocol.validPackage(visitPackage))
             require(expectedPackage != visitPackage && title.isNotBlank() && title.length <= 100)
+            deadline.beginOperation(20_000)
             val clicked = tap(expectedPackage, x, y)
             check(clicked.getBoolean("success")) { clicked.getString("error").orEmpty() }
             var arrived = false
@@ -24,10 +37,15 @@ class AutomationUserService : IAutomationService.Stub() {
                 if (TapProtocol.isForeground(visitPackage, foreground)) { arrived = true; break }
             }
             check(arrived) { "未确认跳转到访问目标" }
-            val identity = Binder.clearCallingIdentity()
-            val page = try { UiSnapshot.parse(UiHierarchyReader.read(visitPackage)) }
+            VisitPageWait.awaitTitle(title, read = {
+                val identity = Binder.clearCallingIdentity()
+                try { UiSnapshot.parse(UiHierarchyReader.read(visitPackage)) }
                 finally { Binder.restoreCallingIdentity(identity) }
-            check(page.findExact(title) != null) { "访问页面标题不符，不操作其他页面" }
+            }, pause = { SystemClock.sleep(it) }, active = {
+                deadline.check()
+                val current = CommandRunner.run(listOf("/system/bin/dumpsys", "activity", "activities"), 1500, 256000)
+                check(TapProtocol.isForeground(visitPackage, current)) { "访问目标已离开前台，不抢占用户页面" }
+            }, log = { Log.i("PersonalAgent", "VISIT_WAIT $it") })
             Log.i("PersonalAgent", "VISIT_CONFIRMED package=$visitPackage title=$title")
             SystemClock.sleep(1500)
             val foreground = CommandRunner.run(listOf("/system/bin/dumpsys", "activity", "activities"), 1500, 256000)
@@ -37,11 +55,13 @@ class AutomationUserService : IAutomationService.Stub() {
             Bundle().apply { putBoolean("success", true); putInt("exitCode", 0) }
         } catch (e: Exception) {
             Bundle().apply { putBoolean("success", false); putInt("exitCode", -1); putString("error", e.message) }
-        }.apply { putLong("elapsedMs", SystemClock.elapsedRealtime() - started) }
+        } finally { deadline.endOperation() }
+            .apply { putLong("elapsedMs", SystemClock.elapsedRealtime() - started) }
     }
 
     @Synchronized
     override fun captureScreen(expectedPackage: String): android.os.ParcelFileDescriptor {
+        deadline.check()
         require(LaunchProtocol.validPackage(expectedPackage))
         val foreground = CommandRunner.run(listOf("/system/bin/dumpsys", "activity", "activities"), 3000, 256000)
         check(TapProtocol.isForeground(expectedPackage, foreground)) { "目标不在主屏前台，取消截图" }
@@ -61,6 +81,7 @@ class AutomationUserService : IAutomationService.Stub() {
             val foreground = CommandRunner.run(listOf("/system/bin/dumpsys", "activity", "activities"), 3000, 256000)
             val command = SwipeProtocol.command(expectedPackage, startX, startY, endX, endY, durationMs, foreground)
             Log.i("PersonalAgent", "SWIPE_BEGIN package=$expectedPackage display=0 from=$startX,$startY to=$endX,$endY durationMs=$durationMs")
+            deadline.check()
             result = CommandRunner.run(command, 4000)
             check(!result.timedOut && result.exitCode == 0 && result.stderr.isBlank() &&
                 !result.stdout.contains("Error", ignoreCase = true)) { "滑动命令未确认成功" }
@@ -86,9 +107,11 @@ class AutomationUserService : IAutomationService.Stub() {
     private fun navigationKey(expectedPackage: String, key: String): Bundle {
         val started = SystemClock.elapsedRealtime()
         return try {
-            require(LaunchProtocol.validPackage(expectedPackage))
+            deadline.check()
+        require(LaunchProtocol.validPackage(expectedPackage))
             val foreground = CommandRunner.run(listOf("/system/bin/dumpsys", "activity", "activities"), 3000, 256000)
             check(TapProtocol.isForeground(expectedPackage, foreground)) { "目标已不在前台，未发送$key" }
+            deadline.check()
             val result = CommandRunner.run(listOf("/system/bin/input", "-d", "0", "keyevent", key), 3000)
             check(!result.timedOut && result.exitCode == 0 && result.stderr.isBlank()) { "$key 命令失败" }
             Bundle().apply { putBoolean("success", true); putInt("exitCode", 0) }
@@ -99,6 +122,7 @@ class AutomationUserService : IAutomationService.Stub() {
 
     @Synchronized
     override fun dumpUi(expectedPackage: String): String {
+        deadline.check()
         require(LaunchProtocol.validPackage(expectedPackage))
         val identity = Binder.clearCallingIdentity()
         return try { UiHierarchyReader.read(expectedPackage) } finally { Binder.restoreCallingIdentity(identity) }
@@ -112,6 +136,7 @@ class AutomationUserService : IAutomationService.Stub() {
             val foreground = CommandRunner.run(listOf("/system/bin/dumpsys", "activity", "activities"), 3_000, 256_000)
             check(TapProtocol.isForeground(expectedPackage, foreground)) { "目标 App 未处于前台，取消点击" }
             Log.i("PersonalAgent", "TAP_BEGIN package=$expectedPackage display=0 x=$x y=$y uid=${Process.myUid()} pid=${Process.myPid()}")
+            deadline.check()
             command = CommandRunner.run(listOf("/system/bin/input", "-d", "0", "tap", x.toString(), y.toString()), 3_000)
             val success = !command.timedOut && command.exitCode == 0 && command.stderr.isBlank() &&
                 !command.stdout.contains("Error", ignoreCase = true)
@@ -143,6 +168,7 @@ class AutomationUserService : IAutomationService.Stub() {
         return try {
             require(LaunchProtocol.validPackage(packageName)) { "Invalid package name" }
             Log.i("PersonalAgent", "LAUNCH_BEGIN package=$packageName uid=${Process.myUid()} pid=${Process.myPid()}")
+            deadline.check()
             command = CommandRunner.run(listOf(
                 "/system/bin/cmd", "package", "resolve-activity", "--brief", "--user", "current",
                 "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER", "-p", packageName,
@@ -151,6 +177,7 @@ class AutomationUserService : IAutomationService.Stub() {
                 ?: error("未找到可启动入口，或解析命令失败")
             stage = "start"
             Log.i("PersonalAgent", "LAUNCH_COMPONENT $component")
+            deadline.check()
             command = CommandRunner.run(listOf(
                 "/system/bin/am", "start", "-W", "--user", "current", "-n", component,
                 "-f", "0x10000000",
@@ -189,6 +216,7 @@ class AutomationUserService : IAutomationService.Stub() {
     }
 
     override fun destroy() {
+        watchdog.shutdownNow()
         Log.i("PersonalAgent", "SERVICE_DESTROY pid=${Process.myPid()}")
         exitProcess(0)
     }
