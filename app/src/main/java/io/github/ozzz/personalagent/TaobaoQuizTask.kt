@@ -4,6 +4,7 @@ package io.github.ozzz.personalagent
 internal object TaobaoQuizTask {
     private const val PACKAGE = "com.taobao.taobao"
     private val answers = mapOf(
+        "1. 猜一猜：下列哪个词是古人对钱币的别称单选题" to "孔方兄",
         "1. 为什么手机屏幕沾上水会影响触控效果单选题" to "水能导电",
         "1. 猜一猜：成语“白云苍狗”的典故与哪位诗人有关单选题" to "杜甫",
         "1. 猜一猜：土豆为什么得名马铃薯单选题" to "与马铃铛有关",

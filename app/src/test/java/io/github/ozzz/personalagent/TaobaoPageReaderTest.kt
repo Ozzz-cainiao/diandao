@@ -35,6 +35,14 @@ class TaobaoPageReaderTest {
         assertTrue(runCatching { TaobaoPageReader.read(disabled) {} }.isFailure)
         assertEquals(0, disabled.taps)
     }
+    @Test fun newOfficialDiscountCouponIsClosed() {
+        val updated = popup.replace("限时福利砸中你", "张消费券共")
+            .replace("叠加立减享折上折", "可叠加官方立减")
+            .replace("</hierarchy>", "<node text=\"去使用\" bounds=\"462,1430,618,1499\" enabled=\"true\" visible=\"true\"/></hierarchy>")
+        val runtime = Runtime(listOf(updated, "<hierarchy/>"))
+        assertTrue(TaobaoPageReader.read(runtime) {}.nodes.isEmpty())
+        assertEquals(1, runtime.taps)
+    }
     @Test fun repeatedPopupIsBounded() {
         val runtime = Runtime(listOf(popup))
         assertTrue(runCatching { TaobaoPageReader.read(runtime) {} }.isFailure)

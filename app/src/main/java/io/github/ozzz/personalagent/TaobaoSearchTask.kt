@@ -16,10 +16,15 @@ internal object TaobaoSearchTask {
         runtime.log("[搜索] 选择搜索建议：${suggestion.description}")
         runtime.tap(PACKAGE, suggestion.x, suggestion.y)
         runtime.pause(1500)
+        return browse(runtime, read)
+    }
+    internal fun browse(runtime: AutomationRuntime, read: () -> UiSnapshot): UiSnapshot {
+        var page: UiSnapshot
         var sawTimer = false
         for (step in 0..10) {
             page = read()
-            val root = checkNotNull(page.findExact("金币-固搜-interact")) { "搜索奖励页面已变化，停止" }
+            val root = checkNotNull(page.findExact("金币-固搜-interact")
+                ?: page.findExact("金币-固推&自建feeds-interact")) { "搜索奖励页面已变化，停止" }
             val timer = page.findExact("秒可领") != null && page.findExact("浏览") != null
             if (!timer && sawTimer) break
             check(timer) { "未确认搜索浏览计时，停止" }
@@ -38,8 +43,10 @@ internal object TaobaoSearchTask {
             page = read()
             if (page.findExact("今日速赚") != null) {
                 check(TaobaoQuickTask.allDone(page) ||
-                    (page.nodes.any { it.usable && it.text.startsWith(TITLE) } &&
-                        TaobaoQuickTask.reward(page, TITLE, "+30") == null)) {
+                    (page.nodes.any { it.usable && (it.text.startsWith(TITLE) || it.text.startsWith("看看#") || it.text.startsWith("发现精选好物")) } &&
+                        page.nodes.filter { it.usable && (it.text.startsWith(TITLE) ||
+                            it.text.startsWith("看看#") || it.text.startsWith("发现精选好物")) }
+                            .all { TaobaoQuickTask.reward(page, it.text, "+30") == null })) {
                     "返回面板后搜索奖励仍未确认"
                 }
                 runtime.log("[搜索] 面板确认搜索任务已完成")

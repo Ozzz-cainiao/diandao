@@ -31,6 +31,12 @@ class TaobaoQuizTaskTest {
             node("水能溶解屏幕", 100, 800), node("水能导电", 100, 1000)))
         assertEquals("水能导电", TaobaoQuizTask.answer(question).text)
     }
+    @Test fun moneyNicknameSelectsKongfangByText() {
+        val page = UiSnapshot(listOf(node("淘金币趣味答题"),
+            node("1. 猜一猜：下列哪个词是古人对钱币的别称单选题"),
+            node("不夜侯", 100, 800), node("孔方兄", 100, 1000)))
+        assertEquals("孔方兄", TaobaoQuizTask.answer(page).text)
+    }
     @Test fun unknownQuestionNeverClicks() {
         val runtime = Runtime()
         assertTrue(runCatching { TaobaoQuizTask.run(runtime) { UiSnapshot(listOf(node("淘金币趣味答题"), node("未知题目"))) } }.isFailure)

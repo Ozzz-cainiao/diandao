@@ -87,6 +87,15 @@ object TaobaoQuickTask {
         runtime.launch(PACKAGE)
         runtime.pause(2500)
         var initial = read()
+        if (initial.findExact("金币-固推&自建feeds-interact") != null ||
+            initial.findExact("金币-固搜-interact") != null) {
+            runtime.log("[浏览] 恢复带计时的商品列表")
+            initial = TaobaoSearchTask.browse(runtime, ::read)
+        }
+        if (initial.findExact("淘金币趣味答题") != null) {
+            runtime.log("[课堂] 恢复待答题页面")
+            initial = TaobaoQuizTask.run(runtime, ::read)
+        }
         if (browseRewardEarned(initial)) {
             runtime.log("[快速赚] 恢复已得30页面，返回面板核对")
             runtime.back(PACKAGE)
@@ -152,10 +161,19 @@ object TaobaoQuickTask {
             runtime.log("[快速赚] 进入好物沉浸看，分段滑动并检查奖励（最多10次）")
             tap(video)
             runtime.pause(1500)
-            videoResult = browse(runtime, ::read) + "；"
-            runtime.back(PACKAGE)
-            runtime.pause(1000)
-            page = read()
+            val browsing = read()
+            if (browsing.findExact("金币-固推&自建feeds-interact") != null) {
+                page = TaobaoSearchTask.browse(runtime, ::read)
+                videoResult = "商品列表浏览面板确认；"
+            } else {
+                var firstRead = true
+                videoResult = browse(runtime) {
+                    if (firstRead) { firstRead = false; browsing } else read()
+                } + "；"
+                runtime.back(PACKAGE)
+                runtime.pause(1000)
+                page = read()
+            }
             check(page.findExact("今日速赚") != null) { "视频奖励已确认，但未回到任务面板，停止" }
         }
         (reward(page, "搜一搜你心仪的宝贝", "+30")

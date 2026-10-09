@@ -8,7 +8,9 @@ internal object TaobaoPageReader {
             record(xml)
             val page = UiSnapshot.parse(xml)
             val overlay = page.nodes.any { it.usable && it.id == "com.taobao.taobao:id/poplayer_native_state_id" }
-            val coupon = page.findExact("限时福利砸中你") != null && page.findExact("叠加立减享折上折") != null
+            val coupon = (page.findExact("限时福利砸中你") != null && page.findExact("叠加立减享折上折") != null) ||
+                (page.findExact("张消费券共") != null && page.findExact("可叠加官方立减") != null &&
+                    page.findExact("去使用") != null)
             if (!overlay || !coupon) return page
             check(attempt < 3) { "消费券弹窗关闭3次后仍出现，停止" }
             val close = page.nodes.singleOrNull { it.usable && it.clickable && it.named("关闭按钮") }

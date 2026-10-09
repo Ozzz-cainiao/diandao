@@ -28,6 +28,21 @@ class TaobaoSearchTaskTest {
             swipes++
         }
     }
+    @Test fun feedListScrollsThenVerifiesPanel() {
+        val runtime = Runtime()
+        val feed = root.copy(text = "金币-固推&自建feeds-interact")
+        val pages = java.util.ArrayDeque(listOf(page(feed, node("浏览"), node("秒可领")), page(feed), done))
+        assertEquals(done, TaobaoSearchTask.browse(runtime) { pages.removeFirst() })
+        assertEquals(1, runtime.swipes)
+        assertEquals(0, runtime.taps)
+    }
+    @Test fun unrelatedThirtyAnimationDoesNotHideCompletedTask() {
+        val runtime = Runtime()
+        val panel = page(node("今日速赚"), node("发现精选好物浏览15秒", 1100).copy(right = 545),
+            node("+30", 123).copy(left = 382, right = 444))
+        val pages = java.util.ArrayDeque(listOf(pending, page(root), panel))
+        assertEquals(panel, TaobaoSearchTask.browse(runtime) { pages.removeFirst() })
+    }
     @Test fun verifiesPanelAfterTimerDisappears() {
         val runtime = Runtime()
         val pages = java.util.ArrayDeque(listOf(entry, pending, page(root), done))

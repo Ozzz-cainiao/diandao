@@ -20,6 +20,7 @@ internal class PageBudget(private val now: () -> Long, private val limitMs: Long
             val kind = when {
                 page.findExact("今日速赚") != null -> "快速赚面板"
                 page.findExact("搜索有福利") != null -> "搜索福利入口"
+                page.findExact("金币-固推&自建feeds-interact") != null -> "商品列表浏览"
                 page.findExact("金币-固搜-interact") != null -> "搜索浏览"
                 page.findExact("淘宝购物清单") != null -> "清单浏览"
                 page.findExact("淘金币趣味答题") != null -> "趣味课堂"
