@@ -7,44 +7,42 @@ class TaobaoFarmTaskTest {
     private fun page(vararg labels: String) = UiSnapshot(labels.map {
         UiNode(it, "", "", 0, 0, 100, 100, false, true, true)
     })
-    private class Runtime(var label: String = "蚂蚁庄园") : AutomationRuntime {
-        var reads = 0
-        var launches = 0
+    private class Runtime(val result: UiSnapshot, var label: String = "蚂蚁庄园") : AutomationRuntime {
+        var visits = 0
         var cancelled = false
-        override fun launch(packageName: String) { assertEquals("com.taobao.taobao", packageName); launches++ }
-        override fun readUi(packageName: String): String = error("跨App访问由远端完成，不在App中轮询")
-        override fun visitAndReturn(packageName: String, x: Int, y: Int, visitPackage: String, title: String) {
-            reads++
-            if (cancelled) error("任务已取消")
+        override fun visitAndFinish(packageName: String, x: Int, y: Int, visitPackage: String,
+                                    title: String, markers: List<String>): UiSnapshot {
+            visits++
+            check(!cancelled) { "任务已取消" }
             check(label == title) { "访问标题不符" }
-            launches++
+            assertEquals(listOf("今日速赚", "今日快速赚奖励已拿完"), markers)
+            return result
         }
+        override fun launch(packageName: String) = error("return performed remotely")
+        override fun readUi(packageName: String): String = error("no client polling after visit")
         override fun tap(packageName: String, x: Int, y: Int) = error("no taps in Alipay")
         override fun back(expectedPackage: String) = error("no back in Alipay")
         override fun returnHome(expectedPackage: String) {}
         override fun swipe(packageName: String, startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Int) = error("no swipe")
-        override fun pause(milliseconds: Long) {}
+        override fun pause(milliseconds: Long) = error("no client waits after visit")
         override fun log(message: String) {}
     }
-    @Test fun visitThenConfirmAllDoneWithoutAlipayActions() {
-        val runtime = Runtime()
-        var reads = 0
+    @Test fun remoteCompletionNeedsNoClientPolling() {
         val done = page("今日速赚", "今日快速赚奖励已拿完")
-        assertEquals(done, TaobaoFarmTask.run(runtime, page("入口").nodes[0]) { if (reads++ == 0) page("今日速赚") else done })
-        assertEquals(1, runtime.launches)
+        val runtime = Runtime(done)
+        assertEquals(done, TaobaoFarmTask.run(runtime, page("入口").nodes[0]))
+        assertEquals(1, runtime.visits)
     }
     @Test fun unknownAlipayPageStops() {
-        val runtime = Runtime("支付宝")
-        assertTrue(runCatching { TaobaoFarmTask.run(runtime, page("入口").nodes[0]) { page() } }.isFailure)
-        assertEquals(0, runtime.launches)
+        val runtime = Runtime(page(), "支付宝")
+        assertTrue(runCatching { TaobaoFarmTask.run(runtime, page("入口").nodes[0]) }.isFailure)
     }
     @Test fun cancellationIsNotRetried() {
-        val runtime = Runtime().apply { cancelled = true }
-        assertTrue(runCatching { TaobaoFarmTask.run(runtime, page("入口").nodes[0]) { page() } }.isFailure)
-        assertEquals(1, runtime.reads)
+        val runtime = Runtime(page()).apply { cancelled = true }
+        assertTrue(runCatching { TaobaoFarmTask.run(runtime, page("入口").nodes[0]) }.isFailure)
+        assertEquals(1, runtime.visits)
     }
     @Test fun visitAloneDoesNotClaimRewardSuccess() {
-        assertTrue(runCatching { TaobaoFarmTask.run(Runtime(), page("入口").nodes[0]) { page("今日速赚") } }.isFailure)
-        assertFalse(TaobaoQuickTask.allDone(page("今日快速赚奖励已拿完")))
+        assertTrue(runCatching { TaobaoFarmTask.run(Runtime(page("今日速赚")), page("入口").nodes[0]) }.isFailure)
     }
 }

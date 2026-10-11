@@ -37,6 +37,12 @@ class TaobaoQuizTaskTest {
             node("不夜侯", 100, 800), node("孔方兄", 100, 1000)))
         assertEquals("孔方兄", TaobaoQuizTask.answer(page).text)
     }
+    @Test fun sikongQuestionSelectsOfficialTitleByText() {
+        val page = UiSnapshot(listOf(node("淘金币趣味答题"),
+            node("1. 成语“司空见惯”中的“司空”在古代指的是单选题"),
+            node("地名", 100, 800), node("官职", 100, 1000)))
+        assertEquals("官职", TaobaoQuizTask.answer(page).text)
+    }
     @Test fun unknownQuestionNeverClicks() {
         val runtime = Runtime()
         assertTrue(runCatching { TaobaoQuizTask.run(runtime) { UiSnapshot(listOf(node("淘金币趣味答题"), node("未知题目"))) } }.isFailure)

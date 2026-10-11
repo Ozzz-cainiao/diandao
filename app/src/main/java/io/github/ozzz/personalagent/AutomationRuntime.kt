@@ -5,6 +5,11 @@ interface AutomationRuntime {
     fun visitAndReturn(packageName: String, x: Int, y: Int, visitPackage: String, title: String) {
         error("当前Runtime不支持跨App访问")
     }
+    fun visitAndFinish(packageName: String, x: Int, y: Int, visitPackage: String,
+                       title: String, markers: List<String>): UiSnapshot {
+        error("当前Runtime不支持跨App完成")
+    }
+    fun completeAndReturnHome(packageName: String, markers: List<String>) { returnHome(packageName) }
     fun back(expectedPackage: String)
     fun returnHome(expectedPackage: String)
     fun launch(packageName: String)

@@ -28,6 +28,14 @@ class TaobaoSearchTaskTest {
             swipes++
         }
     }
+    @Test fun discoveryOfferCanOpenFeedWithoutSearchEntry() {
+        val runtime = Runtime()
+        val feed = root.copy(text = "金币-固推&自建feeds-interact")
+        val pages = java.util.ArrayDeque(listOf(page(feed), page(feed, node("浏览"), node("秒可领")), page(feed), done))
+        assertEquals(done, TaobaoSearchTask.run(runtime) { pages.removeFirst() })
+        assertEquals(1, runtime.swipes)
+        assertEquals(0, runtime.taps)
+    }
     @Test fun feedListScrollsThenVerifiesPanel() {
         val runtime = Runtime()
         val feed = root.copy(text = "金币-固推&自建feeds-interact")

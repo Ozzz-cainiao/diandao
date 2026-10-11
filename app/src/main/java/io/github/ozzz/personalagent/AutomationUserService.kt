@@ -60,6 +60,40 @@ class AutomationUserService : IAutomationService.Stub() {
     }
 
     @Synchronized
+    override fun visitAndFinish(expectedPackage: String, x: Int, y: Int, visitPackage: String,
+                                title: String, markers: Array<out String>, ownerPackage: String): Bundle {
+        val visited = visitAndReturn(expectedPackage, x, y, visitPackage, title)
+        if (!visited.getBoolean("success")) return visited
+        return completeAndReturnHome(expectedPackage, markers, ownerPackage)
+    }
+
+    @Synchronized
+    override fun completeAndReturnHome(expectedPackage: String, markers: Array<out String>, ownerPackage: String): Bundle {
+        val started = SystemClock.elapsedRealtime()
+        return try {
+            require(LaunchProtocol.validPackage(ownerPackage) && ownerPackage != expectedPackage)
+            deadline.beginOperation(20_000)
+            val xml = CompletionWait.confirm(markers.toList(), read = { dumpUi(expectedPackage) },
+                pause = { SystemClock.sleep(it) }, active = {
+                    deadline.check()
+                    val current = CommandRunner.run(listOf("/system/bin/dumpsys", "activity", "activities"), 1500, 256000)
+                    check(TapProtocol.isForeground(expectedPackage, current)) { "目标不在前台，不抢占用户页面" }
+                })
+            Log.i("PersonalAgent", "REMOTE_COMPLETION_CONFIRMED package=$expectedPackage")
+            val home = returnHome(expectedPackage)
+            check(home.getBoolean("success")) { "完成已确认，但HOME失败" }
+            // Resume the existing task owner so a vendor background freeze cannot strand its Binder result.
+            val owner = launchApp(ownerPackage)
+            check(owner.getBoolean("success")) { "已发送HOME，但任务界面未恢复" }
+            Bundle().apply { putBoolean("success", true); putInt("exitCode", 0)
+                putBoolean("homeReturned", true); putString("completionUi", xml) }
+        } catch (e: Exception) {
+            Bundle().apply { putBoolean("success", false); putInt("exitCode", -1); putString("error", e.message) }
+        } finally { deadline.endOperation() }
+            .apply { putLong("elapsedMs", SystemClock.elapsedRealtime() - started) }
+    }
+
+    @Synchronized
     override fun captureScreen(expectedPackage: String): android.os.ParcelFileDescriptor {
         deadline.check()
         require(LaunchProtocol.validPackage(expectedPackage))

@@ -16,4 +16,6 @@ interface IAutomationService {
     ParcelFileDescriptor captureScreen(String expectedPackage) = 8;
     Bundle visitAndReturn(String expectedPackage, int x, int y, String visitPackage, String title) = 9;
     void armDeadline(long deadlineElapsedMs) = 10;
+    Bundle visitAndFinish(String expectedPackage, int x, int y, String visitPackage, String title, in String[] markers, String ownerPackage) = 11;
+    Bundle completeAndReturnHome(String expectedPackage, in String[] markers, String ownerPackage) = 12;
 }

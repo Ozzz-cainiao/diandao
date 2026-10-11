@@ -33,10 +33,22 @@ object TaobaoQuickTask {
         return candidates.singleOrNull()
     }
 
+    internal fun entry(page: UiSnapshot): UiNode? {
+        val label = page.findExact("40秒快速赚") ?: page.findExact("快速赚") ?: return null
+        return page.nodes.filter { it.usable && it.clickable && it.left <= label.left &&
+            it.top <= label.top && it.right >= label.right && it.bottom >= label.bottom &&
+            it.bottom - it.top <= (label.bottom - label.top) * 6 }
+            .minByOrNull { (it.right - it.left).toLong() * (it.bottom - it.top) } ?: label
+    }
+
     fun runAndReturnHome(runtime: AutomationRuntime, record: (String) -> Unit = {}): String {
         val result = run(runtime, record)
         runtime.log("[快速赚] $result；准备返回桌面")
-        try { runtime.returnHome(PACKAGE) }
+        try {
+            if (result.contains("今日快速赚奖励已拿完")) {
+                runtime.completeAndReturnHome(PACKAGE, listOf("今日速赚", "今日快速赚奖励已拿完"))
+            } else runtime.returnHome(PACKAGE)
+        }
         catch (e: Exception) { throw IllegalStateException("$result；但返回桌面失败：${e.message}", e) }
         return "$result；已发送返回桌面指令"
     }
@@ -120,7 +132,6 @@ object TaobaoQuickTask {
         }
         val signIn = TaobaoCoinTask.run(runtime, record, initial)
         runtime.log("[签到结果] $signIn")
-        fun entry(page: UiSnapshot) = page.findExact("40秒快速赚") ?: page.findExact("快速赚")
         var targetEntry = entry(read())
         for (attempt in 1..5) {
             if (targetEntry != null) break
@@ -184,7 +195,7 @@ object TaobaoQuickTask {
         }
         reward(page, "去蚂蚁庄园逛逛哟", "+50")?.let {
             runtime.log("[庄园] 从任务入口访问一次")
-            page = TaobaoFarmTask.run(runtime, it, ::read)
+            page = TaobaoFarmTask.run(runtime, it)
         }
         return summary + videoResult + if (allDone(page)) "淘宝确认：今日快速赚奖励已拿完" else
             "当前无其他支持的待领奖任务；未知任务未执行"

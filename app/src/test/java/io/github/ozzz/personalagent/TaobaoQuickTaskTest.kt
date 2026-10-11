@@ -11,6 +11,15 @@ class TaobaoQuickTaskTest {
             UiNode("30", "", "", 981, 1414, 1023, 1451, false, true, true)))
         assertTrue(TaobaoQuickTask.browseRewardEarned(page))
     }
+    @Test fun entryUsesSmallestClickableCardContainingLabel() {
+        val label = UiNode("40秒快速赚", "", "", 272, 362, 441, 413, false, true, true)
+        val card = label.copy(text = "", left = 239, top = 345, right = 495, bottom = 559, clickable = true)
+        val root = card.copy(left = 0, top = 0, right = 1080, bottom = 2358)
+        assertEquals(card, TaobaoQuickTask.entry(UiSnapshot(listOf(root, card, label))))
+        assertEquals(label, TaobaoQuickTask.entry(UiSnapshot(listOf(card.copy(visible = false), label))))
+        assertEquals(label, TaobaoQuickTask.entry(UiSnapshot(listOf(root, label))))
+        assertNull(TaobaoQuickTask.entry(UiSnapshot(listOf(card))))
+    }
     @Test fun recognizesObservedVideoPageWithoutPurchaseButtons() {
         val root = UiNode("", "", "", 0, 0, 1080, 2400, false, true, true)
         val content = root.copy(description = "图片，按钮。双击可进入详情页。", bottom = 2191)

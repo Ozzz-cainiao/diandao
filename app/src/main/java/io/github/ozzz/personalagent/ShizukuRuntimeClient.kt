@@ -220,6 +220,7 @@ class ShizukuRuntimeClient(
                 service.armDeadline(minOf(taskDeadline, now + budget.remaining()))
             }
             var lastPackage: String? = null
+            var remoteHomeReturned = false
             fun capture(reason: String) {
                 val target = lastPackage ?: return
                 if (closed || generation != attempt) return
@@ -240,8 +241,35 @@ class ShizukuRuntimeClient(
                 }
                 override fun visitAndReturn(packageName: String, x: Int, y: Int, visitPackage: String, title: String) =
                     command("访问 $visitPackage 并返回") { service.visitAndReturn(packageName, x, y, visitPackage, title) }
+                override fun visitAndFinish(packageName: String, x: Int, y: Int, visitPackage: String,
+                                            title: String, markers: List<String>): UiSnapshot {
+                    checkActive()
+                    val value = service.visitAndFinish(packageName, x, y, visitPackage, title,
+                        markers.toTypedArray(), BuildConfig.APPLICATION_ID)
+                    return acceptCompletion(value, packageName, markers)
+                }
+                private fun acceptCompletion(value: android.os.Bundle, packageName: String, markers: List<String>): UiSnapshot {
+                    checkActive()
+                    check(value.getBoolean("success") && value.getBoolean("homeReturned")) {
+                        "跨App收尾失败：${value.getString("error")}" }
+                    val xml = checkNotNull(value.getString("completionUi"))
+                    val page = UiSnapshot.parse(xml)
+                    check(markers.all { page.findExact(it) != null }) { "远端完成证据不足" }
+                    evidence?.page(xml, "$packageName/远端完成确认")
+                    remoteHomeReturned = true
+                    log("[任务收尾] 远端确认完成并HOME，已恢复点到处理结果")
+                    return page
+                }
+                override fun completeAndReturnHome(packageName: String, markers: List<String>) {
+                    if (remoteHomeReturned) return
+                    checkActive()
+                    capture("任务结束前")
+                    val value = service.completeAndReturnHome(packageName, markers.toTypedArray(), BuildConfig.APPLICATION_ID)
+                    acceptCompletion(value, packageName, markers)
+                }
                 override fun back(expectedPackage: String) = command("返回任务面板") { service.back(expectedPackage) }
                 override fun returnHome(expectedPackage: String) {
+                    if (remoteHomeReturned) { log("[返回桌面] 远端已发送HOME，关闭点到后回桌面"); return }
                     checkActive()
                     capture("任务结束前")
                     command("返回桌面") { service.returnHome(expectedPackage) }

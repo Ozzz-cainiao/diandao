@@ -6,6 +6,7 @@ internal object TaobaoSearchTask {
     private const val TITLE = "搜一搜你心仪的宝贝"
     fun run(runtime: AutomationRuntime, read: () -> UiSnapshot): UiSnapshot {
         var page = read()
+        if (page.findExact("金币-固推&自建feeds-interact") != null) return browse(runtime, read)
         check(page.findExact("搜索有福利") != null) { "未确认搜索福利页面" }
         val discovery = checkNotNull(page.findExact("搜索发现")) { "未找到搜索发现" }
         val suggestion = checkNotNull(page.nodes.filter {
