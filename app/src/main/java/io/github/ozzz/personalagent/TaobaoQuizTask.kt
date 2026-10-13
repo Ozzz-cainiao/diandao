@@ -4,6 +4,8 @@ package io.github.ozzz.personalagent
 internal object TaobaoQuizTask {
     private const val PACKAGE = "com.taobao.taobao"
     private val answers = mapOf(
+        "1. 成语“专心致志”最初说的是学习哪种技艺的故事单选题" to "下棋",
+        "1. 涮火锅时常见的“贡菜”究竟是什么菜单选题" to "莴笋加工成的干菜",
         "1. 成语“司空见惯”中的“司空”在古代指的是单选题" to "官职",
         "1. 猜一猜：下列哪个词是古人对钱币的别称单选题" to "孔方兄",
         "1. 为什么手机屏幕沾上水会影响触控效果单选题" to "水能导电",

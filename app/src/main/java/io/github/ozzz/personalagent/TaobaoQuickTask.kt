@@ -8,6 +8,18 @@ object TaobaoQuickTask {
     /** The reward badge can expose '已得' and '30' as separate adjacent nodes. */
     internal fun browseRewardEarned(page: UiSnapshot): Boolean {
         if (page.findExact("已得30") != null || page.findExact("已得 30") != null) return true
+        fun adjacent(left: UiNode, right: UiNode): Boolean {
+            val height = left.bottom - left.top
+            return right.usable && right.x > left.x && right.left >= left.right - height / 2 &&
+                right.left <= left.right + height && right.top < left.bottom && right.bottom > left.top
+        }
+        if (page.findExact("任务已完成") != null && page.nodes.any { earned ->
+            earned.usable && earned.named("已") && page.nodes.any { verb ->
+                verb.named("得") && adjacent(earned, verb) && page.nodes.any { amount ->
+                    amount.named("30") && adjacent(verb, amount)
+                }
+            }
+        }) return true
         return page.nodes.filter { it.usable && it.named("已得") }.any { label ->
             val height = label.bottom - label.top
             page.nodes.any { amount ->
@@ -130,19 +142,28 @@ object TaobaoQuickTask {
             }
             return "已恢复清单完成状态：累计60，面板2/2确认；本次未重复领取"
         }
-        val signIn = TaobaoCoinTask.run(runtime, record, initial)
-        runtime.log("[签到结果] $signIn")
-        var targetEntry = entry(read())
-        for (attempt in 1..5) {
-            if (targetEntry != null) break
-            runtime.log("[快速赚] 等待签到动画结束和入口加载 $attempt/5")
-            runtime.pause(1000)
-            targetEntry = entry(read())
-        }
-        checkNotNull(targetEntry) { "签到已确认，但等待后仍未找到快速赚入口" }
-        tap(targetEntry)
-        runtime.pause(1500)
-        var page = read()
+        var page = initial
+        if (page.findExact("今日速赚") == null) {
+            val signIn = TaobaoCoinTask.run(runtime, record, initial)
+            runtime.log("[签到结果] $signIn")
+            var targetEntry = entry(read())
+            for (attempt in 1..5) {
+                if (targetEntry != null) break
+                runtime.log("[快速赚] 等待签到动画结束和入口加载 $attempt/5")
+                runtime.pause(1000)
+                targetEntry = entry(read())
+            }
+            checkNotNull(targetEntry) { "签到已确认，但等待后仍未找到快速赚入口" }
+            tap(targetEntry)
+            runtime.pause(1500)
+            page = read()
+            for (attempt in 1..8) {
+                if (page.findExact("今日速赚") != null) break
+                runtime.log("[快速赚] 等待面板加载 $attempt/8，不重复点击入口")
+                runtime.pause(750)
+                page = read()
+            }
+        } else runtime.log("[快速赚] 恢复已打开的任务面板，本次不重复签到或点击入口")
         check(page.findExact("今日速赚") != null) { "未确认快速赚任务面板" }
         if (allDone(page)) return "淘宝确认：今日快速赚奖励已拿完，无需重复执行"
         var arrival = false

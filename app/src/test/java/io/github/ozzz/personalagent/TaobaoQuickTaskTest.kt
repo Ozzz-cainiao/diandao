@@ -4,6 +4,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TaobaoQuickTaskTest {
+    @Test fun completedVideoWithThreeSeparateRewardCharactersStopsImmediately() {
+        val earned = UiNode("已", "", "", 919, 1414, 950, 1456, false, true, true)
+        val verb = earned.copy(text = "得", left = 947, right = 981)
+        val amount = earned.copy(text = "30", left = 981, right = 1023, bottom = 1451)
+        val complete = earned.copy(text = "任务已完成", left = 871, top = 1380, right = 1063, bottom = 1420)
+        val page = UiSnapshot(listOf(complete, earned, verb, amount))
+        assertTrue(TaobaoQuickTask.browseRewardEarned(page))
+        val runtime = Runtime()
+        TaobaoQuickTask.browse(runtime) { page }
+        assertEquals(0, runtime.swipes)
+        assertFalse(TaobaoQuickTask.browseRewardEarned(UiSnapshot(listOf(earned, verb, amount))))
+        assertFalse(TaobaoQuickTask.browseRewardEarned(UiSnapshot(listOf(complete, earned, verb,
+            amount.copy(text = "500")))))
+    }
     @Test fun overlappingRewardLayersStillConfirmSameThirty() {
         val page = UiSnapshot(listOf(
             UiNode("已得", "", "", 919, 1386, 981, 1428, false, true, true),
@@ -95,6 +109,23 @@ class TaobaoQuickTaskTest {
         assertTrue(TaobaoQuickTask.runAndReturnHome(runtime).contains("返回桌面"))
         assertEquals(1, runtime.swipes)
         assertEquals(1, runtime.homes)
+    }
+    @Test fun waitsForSlowPanelBeforeProcessingRewards() {
+        val runtime = readyRuntime()
+        val first = runtime.pages.removeFirst()
+        val second = runtime.pages.removeFirst()
+        repeat(6) { runtime.pages.addFirst(xml(UiSnapshot(listOf(node("加载中", 0, 0))))) }
+        runtime.pages.addFirst(second)
+        runtime.pages.addFirst(first)
+        assertTrue(TaobaoQuickTask.runAndReturnHome(runtime).contains("已得30"))
+        assertEquals(1, runtime.homes)
+    }
+    @Test fun resumesOpenCompletedPanelWithoutLookingForCoveredEntry() {
+        val runtime = Runtime()
+        runtime.pages.add(xml(UiSnapshot(listOf(node("今日速赚", 0, 0), node("今日快速赚奖励已拿完", 0, 100)))))
+        assertTrue(TaobaoQuickTask.runAndReturnHome(runtime).contains("已拿完"))
+        assertEquals(1, runtime.homes)
+        assertEquals(0, runtime.swipes)
     }
     @Test fun waitsForEntryAfterSignInAnimation() {
         val runtime = readyRuntime()

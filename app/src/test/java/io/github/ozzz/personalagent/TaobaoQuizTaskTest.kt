@@ -48,6 +48,18 @@ class TaobaoQuizTaskTest {
         assertTrue(runCatching { TaobaoQuizTask.run(runtime) { UiSnapshot(listOf(node("淘金币趣味答题"), node("未知题目"))) } }.isFailure)
         assertEquals(0, runtime.taps)
     }
+    @Test fun gongcaiQuestionSelectsDriedLettuceByText() {
+        val page = UiSnapshot(listOf(node("淘金币趣味答题"),
+            node("1. 涮火锅时常见的“贡菜”究竟是什么菜单选题"),
+            node("海带加工成的干菜", 100, 800), node("莴笋加工成的干菜", 100, 1000)))
+        assertEquals("莴笋加工成的干菜", TaobaoQuizTask.answer(page).text)
+    }
+    @Test fun dedicationStorySelectsChessByText() {
+        val page = UiSnapshot(listOf(node("淘金币趣味答题"),
+            node("1. 成语“专心致志”最初说的是学习哪种技艺的故事单选题"),
+            node("射箭", 100, 800), node("下棋", 100, 1000)))
+        assertEquals("下棋", TaobaoQuizTask.answer(page).text)
+    }
     @Test fun unselectedAnswerDoesNotSubmit() {
         val runtime = Runtime()
         assertTrue(runCatching { TaobaoQuizTask.run(runtime) { question() } }.isFailure)

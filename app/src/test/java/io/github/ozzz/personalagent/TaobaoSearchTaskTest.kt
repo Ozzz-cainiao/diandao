@@ -44,6 +44,23 @@ class TaobaoSearchTaskTest {
         assertEquals(1, runtime.swipes)
         assertEquals(0, runtime.taps)
     }
+    @Test fun delayedFeedEntryWaitsBeforeAnyGesture() {
+        val runtime = Runtime()
+        val feed = root.copy(text = "金币-固推&自建feeds-interact")
+        val pages = java.util.ArrayDeque(List(5) { page(node("加载中")) } +
+            listOf(page(feed), page(feed, node("浏览"), node("秒可领")), page(feed), done))
+        assertEquals(done, TaobaoSearchTask.run(runtime) { pages.removeFirst() })
+        assertEquals(1, runtime.swipes)
+        assertEquals(0, runtime.taps)
+    }
+    @Test fun stalledEntryStopsWithoutGestures() {
+        val runtime = Runtime()
+        var reads = 0
+        assertTrue(runCatching { TaobaoSearchTask.run(runtime) { reads++; page(node("加载中")) } }.isFailure)
+        assertEquals(9, reads)
+        assertEquals(0, runtime.taps)
+        assertEquals(0, runtime.swipes)
+    }
     @Test fun unrelatedThirtyAnimationDoesNotHideCompletedTask() {
         val runtime = Runtime()
         val panel = page(node("今日速赚"), node("发现精选好物浏览15秒", 1100).copy(right = 545),

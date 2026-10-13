@@ -77,4 +77,20 @@ class TaobaoCoinTaskTest {
         assertEquals(0, runtime.taps)
         assertEquals(0, runtime.homes)
     }
+
+    @Test fun slowCoinPageLoadsWithoutRepeatingEntryTap() {
+        val runtime = Runtime(listOf(page("领淘金币")) + List(6) { page("加载中") } +
+            listOf(page("淘金币标题", "签到领金币"), page("淘金币标题", "赚更多金币", "今天")))
+        TaobaoCoinTask.runAndReturnHome(runtime)
+        assertEquals(2, runtime.taps) // One entry tap and one sign-in tap.
+        assertEquals(1, runtime.homes)
+    }
+
+    @Test fun stalledCoinPageStopsWithoutRepeatingEntryTap() {
+        val runtime = Runtime(listOf(page("领淘金币"), page("加载中")))
+        assertTrue(runCatching { TaobaoCoinTask.runAndReturnHome(runtime) }.isFailure)
+        assertEquals(1, runtime.taps)
+        assertEquals(0, runtime.homes)
+        assertTrue(runtime.index <= 10)
+    }
 }

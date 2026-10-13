@@ -48,4 +48,13 @@ class TaobaoPageReaderTest {
         assertTrue(runCatching { TaobaoPageReader.read(runtime) {} }.isFailure)
         assertEquals(3, runtime.taps)
     }
+    @Test fun datedPreSaleCouponIsClosedWithoutClaimingIt() {
+        val updated = popup.replace("叠加立减享折上折", "10.20 20 点 -10.24 24 点 可用")
+        val runtime = Runtime(listOf(updated, "<hierarchy/>"))
+        assertTrue(TaobaoPageReader.read(runtime) {}.nodes.isEmpty())
+        assertEquals(1, runtime.taps)
+        val missingDate = Runtime(listOf(popup.replace("叠加立减享折上折", "可用")))
+        TaobaoPageReader.read(missingDate) {}
+        assertEquals(0, missingDate.taps)
+    }
 }

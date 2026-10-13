@@ -6,7 +6,15 @@ internal object TaobaoSearchTask {
     private const val TITLE = "搜一搜你心仪的宝贝"
     fun run(runtime: AutomationRuntime, read: () -> UiSnapshot): UiSnapshot {
         var page = read()
+        for (attempt in 1..8) {
+            if (page.findExact("金币-固推&自建feeds-interact") != null ||
+                page.findExact("金币-固搜-interact") != null || page.findExact("搜索有福利") != null) break
+            runtime.log("[搜索] 等待浏览或搜索页面加载 $attempt/8，不点击商品")
+            runtime.pause(750)
+            page = read()
+        }
         if (page.findExact("金币-固推&自建feeds-interact") != null) return browse(runtime, read)
+        if (page.findExact("金币-固搜-interact") != null) return browse(runtime, read)
         check(page.findExact("搜索有福利") != null) { "未确认搜索福利页面" }
         val discovery = checkNotNull(page.findExact("搜索发现")) { "未找到搜索发现" }
         val suggestion = checkNotNull(page.nodes.filter {

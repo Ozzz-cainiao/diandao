@@ -2,13 +2,17 @@ package io.github.ozzz.personalagent
 
 /** Close only the observed native coupon overlay, using its explicit accessibility control. */
 internal object TaobaoPageReader {
+    private val couponDates = Regex("""\d{1,2}\.\d{1,2}\s+\d{1,2}\s*点\s*-\s*\d{1,2}\.\d{1,2}\s+\d{1,2}\s*点\s+可用""")
     fun read(runtime: AutomationRuntime, record: (String) -> Unit): UiSnapshot {
         repeat(4) { attempt ->
             val xml = runtime.readUi("com.taobao.taobao")
             record(xml)
             val page = UiSnapshot.parse(xml)
             val overlay = page.nodes.any { it.usable && it.id == "com.taobao.taobao:id/poplayer_native_state_id" }
-            val coupon = (page.findExact("限时福利砸中你") != null && page.findExact("叠加立减享折上折") != null) ||
+            val datedCoupon = page.nodes.any { it.usable &&
+                (couponDates.matches(it.text) || couponDates.matches(it.description)) }
+            val coupon = (page.findExact("限时福利砸中你") != null &&
+                (page.findExact("叠加立减享折上折") != null || datedCoupon)) ||
                 (page.findExact("张消费券共") != null && page.findExact("可叠加官方立减") != null &&
                     page.findExact("去使用") != null)
             if (!overlay || !coupon) return page

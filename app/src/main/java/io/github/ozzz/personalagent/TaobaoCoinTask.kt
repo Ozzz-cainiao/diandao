@@ -33,9 +33,10 @@ object TaobaoCoinTask {
             runtime.tap(PACKAGE, entry.x, entry.y)
             runtime.pause(1500)
             page = read()
-            for (loading in 1..3) {
+            for (loading in 1..8) {
                 if (page.findExact("淘金币标题") != null || page.findExact("领淘金币") != null) break
-                runtime.pause(500)
+                runtime.log("[签到] 等待淘金币页面加载 $loading/8，不重复点击入口")
+                runtime.pause(750)
                 page = read()
             }
         }
