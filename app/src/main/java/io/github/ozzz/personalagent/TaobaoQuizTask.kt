@@ -11,12 +11,22 @@ internal object TaobaoQuizTask {
         "1. 为什么手机屏幕沾上水会影响触控效果单选题" to "水能导电",
         "1. 猜一猜：成语“白云苍狗”的典故与哪位诗人有关单选题" to "杜甫",
         "1. 猜一猜：土豆为什么得名马铃薯单选题" to "与马铃铛有关",
+    ).mapValues { (_, answer) -> listOf(answer) } + mapOf(
+        "1. 以下哪位人物有可能成为淘金币的忠实用户？多选题" to
+            listOf("沈万三", "赵公明", "鲁智深", "林黛玉"),
     )
-    internal fun answer(page: UiSnapshot): UiNode {
+    private fun questionText(page: UiSnapshot): String {
         check(page.findExact("淘金币趣味答题") != null) { "未确认趣味课堂页面" }
-        val question = answers.keys.singleOrNull { page.findExact(it) != null }
-            ?: error("题目尚未支持，停止答题；不会随机选择")
-        return checkNotNull(page.findExact(answers.getValue(question))) { "答案选项未确认" }
+        return checkNotNull(page.nodes.singleOrNull { it.usable && it.text.startsWith("1.") }) {
+            "题目未加载或不唯一"
+        }.text
+    }
+    private fun options(page: UiSnapshot, labels: List<String>): List<UiNode> = labels.map { label ->
+        checkNotNull(page.nodes.singleOrNull { it.usable && it.named(label) }) { "答案选项缺失或不唯一：$label" }
+    }
+    internal fun answer(page: UiSnapshot): UiNode {
+        val labels = answers[questionText(page)] ?: error("题目尚未支持，停止答题；不会随机选择")
+        return options(page, labels).single()
     }
     data class Outcome(val page: UiSnapshot, val skippedReason: String? = null)
 
@@ -39,7 +49,7 @@ internal object TaobaoQuizTask {
             "题目仍未加载或不唯一，不能跳过未知页面"
         }
         if (question.text in answers) return Outcome(runLoaded(runtime, read, page))
-        val reason = if (question.text.endsWith("多选题")) "多选题暂未支持：${question.text}"
+        val reason = if (question.text.endsWith("多选题")) "多选题答案尚未收录：${question.text}"
             else "题库未收录或题型未支持：${question.text}"
         val submitTop = page.findExact("我选好了")?.top ?: Int.MAX_VALUE
         val choices = page.nodes.filter { it.usable && it.top >= question.bottom && it.bottom <= submitTop }
@@ -65,17 +75,55 @@ internal object TaobaoQuizTask {
         runLoaded(runtime, read, load(runtime, read, null))
 
     private fun runLoaded(runtime: AutomationRuntime, read: () -> UiSnapshot, initial: UiSnapshot): UiSnapshot {
+        val labels = answers[questionText(initial)] ?: error("题目尚未支持，停止答题；不会随机选择")
+        return runReviewed(runtime, read, initial, labels)
+    }
+
+    private fun marks(page: UiSnapshot): List<UiNode> = page.nodes.filter { it.usable && it.named("selected") }
+        .distinctBy { listOf(it.left, it.top, it.right, it.bottom) }
+    private fun beside(mark: UiNode, option: UiNode): Boolean =
+        mark.left >= option.right && mark.top < option.bottom && mark.bottom > option.top
+
+    /** Select a reviewed set by text. Existing correct selections are never toggled off. */
+    internal fun selectAnswers(runtime: AutomationRuntime, read: () -> UiSnapshot,
+                               initial: UiSnapshot, labels: List<String>): UiSnapshot {
+        val question = questionText(initial)
+        require(labels.isNotEmpty() && labels.size <= 8 && labels.distinct().size == labels.size && labels.all { it.isNotBlank() })
+        check((question.endsWith("单选题") && labels.size == 1) || question.endsWith("多选题")) { "题型和答案数量不匹配" }
         var page = initial
-        val option = answer(page)
-        runtime.log("[课堂] 匹配已确认题目，按答案文字选择：${option.text}")
-        runtime.tap(PACKAGE, option.x, option.y)
-        runtime.pause(350)
-        page = read()
-        val chosen = answer(page)
-        check(chosen.text == option.text && page.nodes.any { it.usable && it.named("selected") &&
-            it.left >= chosen.right && it.top < chosen.bottom && it.bottom > chosen.top }) {
-            "未确认答案选中状态，不提交"
+        fun verify(): List<UiNode> {
+            check(questionText(page) == question) { "选择期间题目变化，不提交" }
+            val nodes = options(page, labels)
+            check(marks(page).all { mark -> nodes.count { beside(mark, it) } == 1 }) {
+                "发现非目标选项已选或选中标记不明确，不提交"
+            }
+            return nodes
         }
+        verify() // Resolve every expected option before the first tap.
+        val confirmed = mutableSetOf<String>()
+        for (label in labels) {
+            val target = verify().single { it.named(label) }
+            if (marks(page).none { beside(it, target) }) {
+                runtime.log("[课堂] 按答案文字选择：$label")
+                runtime.tap(PACKAGE, target.x, target.y)
+                runtime.pause(350)
+                page = read()
+            } else runtime.log("[课堂] 答案已选，保留：$label")
+            confirmed.add(label)
+            val nodes = verify()
+            check(nodes.filter { it.text in confirmed || it.description in confirmed }
+                .all { option -> marks(page).count { beside(it, option) } == 1 }) { "未确认答案选中状态，不提交" }
+        }
+        val nodes = verify()
+        check(marks(page).size == labels.size && nodes.all { option -> marks(page).count { beside(it, option) } == 1 }) {
+            "选中集合与答案不一致，不提交"
+        }
+        return page
+    }
+
+    internal fun runReviewed(runtime: AutomationRuntime, read: () -> UiSnapshot,
+                             initial: UiSnapshot, labels: List<String>): UiSnapshot {
+        var page = selectAnswers(runtime, read, initial, labels)
         val submit = checkNotNull(page.findExact("我选好了")) { "未确认答题提交按钮" }
         runtime.tap(PACKAGE, submit.x, submit.y)
         runtime.log("[课堂] 已提交一次，等待明确领奖结果")

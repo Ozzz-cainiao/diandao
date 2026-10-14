@@ -77,13 +77,13 @@ class TaobaoQuizTaskTest {
     @Test fun unchangedQuestionDoesNotSubmitTwice() {
         val runtime = Runtime()
         assertTrue(runCatching { TaobaoQuizTask.run(runtime) { question(true) } }.isFailure)
-        assertEquals(2, runtime.taps)
+        assertEquals(1, runtime.taps) // Already selected: only submits once, never toggles it off.
         assertEquals(0, runtime.backs)
     }
     @Test fun multiSelectQuestionIsSkippedWithoutAnyAnswerTap() {
         val runtime = Runtime()
         val question = UiSnapshot(listOf(node("淘金币趣味答题"),
-            node("1. 以下哪位人物有可能成为淘金币的忠实用户？多选题"), node("沈万三"), node("赵公明")))
+            node("1. 新的多选问题多选题"), node("沈万三"), node("赵公明")))
         val panel = UiSnapshot(listOf(node("今日速赚")))
         val outcome = TaobaoQuizTask.runOrSkip(runtime, { panel }, question)
         assertEquals(panel, outcome.page)
@@ -116,6 +116,67 @@ class TaobaoQuizTaskTest {
     @Test fun selectionFailureIsNotSwallowedByFallback() {
         val runtime = Runtime()
         assertTrue(runCatching { TaobaoQuizTask.runOrSkip(runtime, { question() }, question()) }.isFailure)
+        assertEquals(1, runtime.taps)
+        assertEquals(0, runtime.backs)
+    }
+    private val people = listOf("沈万三", "赵公明", "鲁智深", "林黛玉")
+    private fun multi(selected: Set<String> = emptySet(), order: List<String> = people) = UiSnapshot(
+        listOf(node("淘金币趣味答题"), node("1. 以下哪位人物有可能成为淘金币的忠实用户？多选题")) +
+            order.mapIndexed { i, label -> node(label, 100, 800 + i * 200) } +
+            order.mapIndexedNotNull { i, label -> if (label in selected) node("selected", 900, 800 + i * 200) else null } +
+            node("我选好了", 100, 2100))
+    @Test fun knownMultiSelectsFourNamesAndSubmitsOnlyOnce() {
+        val runtime = Runtime()
+        val panel = UiSnapshot(listOf(node("今日速赚"), node("淘金币趣味课堂参与答题")))
+        val pages = java.util.ArrayDeque(listOf(multi()) + (1..4).map { multi(people.take(it).toSet()) } +
+            listOf(UiSnapshot(listOf(node("已成功领取奖励 回到主页"))), panel))
+        assertEquals(panel, TaobaoQuizTask.runOrSkip(runtime, { pages.removeFirst() }).page)
+        assertEquals(5, runtime.taps)
+        assertEquals(1, runtime.backs)
+    }
+    @Test fun multiSelectionFollowsNamesWhenOptionOrderChanges() {
+        val runtime = Runtime()
+        val order = people.reversed()
+        val pages = java.util.ArrayDeque((1..4).map { multi(people.take(it).toSet(), order) })
+        val selected = TaobaoQuizTask.selectAnswers(runtime, { pages.removeFirst() }, multi(order = order), people)
+        assertEquals(4, selected.nodes.count { it.named("selected") })
+        assertEquals(4, runtime.taps)
+    }
+    @Test fun preselectedCorrectOptionsArePreserved() {
+        val runtime = Runtime()
+        val pages = java.util.ArrayDeque(listOf(multi(people.take(3).toSet()), multi(people.toSet())))
+        TaobaoQuizTask.selectAnswers(runtime, { pages.removeFirst() }, multi(people.take(2).toSet()), people)
+        assertEquals(2, runtime.taps)
+    }
+    @Test fun multiDoesNotSelectEveryOptionUnlessReviewedSetRequiresIt() {
+        val runtime = Runtime()
+        val labels = listOf("沈万三", "鲁智深")
+        val pages = java.util.ArrayDeque(listOf(multi(setOf("沈万三")), multi(labels.toSet())))
+        val selected = TaobaoQuizTask.selectAnswers(runtime, { pages.removeFirst() }, multi(), labels)
+        assertEquals(2, selected.nodes.count { it.named("selected") })
+        assertEquals(2, runtime.taps)
+    }
+    @Test fun wrongPreselectionOrMissingOptionStopsBeforeFirstTap() {
+        val runtime = Runtime()
+        assertTrue(runCatching { TaobaoQuizTask.selectAnswers(runtime, { multi() },
+            multi(setOf("林黛玉")), listOf("沈万三", "赵公明")) }.isFailure)
+        assertTrue(runCatching { TaobaoQuizTask.selectAnswers(runtime, { multi() },
+            multi(order = people.take(3)), people) }.isFailure)
+        assertEquals(0, runtime.taps)
+    }
+    @Test fun radioBehaviorOrChangedQuestionStopsBeforeSubmitting() {
+        val runtime = Runtime()
+        val pages = java.util.ArrayDeque(listOf(multi(setOf("沈万三")), multi(setOf("赵公明"))))
+        assertTrue(runCatching { TaobaoQuizTask.runReviewed(runtime, { pages.removeFirst() }, multi(), people) }.isFailure)
+        assertEquals(2, runtime.taps)
+        val changed = Runtime()
+        assertTrue(runCatching { TaobaoQuizTask.runReviewed(changed, { question() }, multi(), people) }.isFailure)
+        assertEquals(1, changed.taps)
+    }
+    @Test fun multiAlreadySelectedSubmitsOnceAndNeverRetriesMissingReward() {
+        val runtime = Runtime()
+        assertTrue(runCatching { TaobaoQuizTask.runReviewed(runtime, { multi(people.toSet()) },
+            multi(people.toSet()), people) }.isFailure)
         assertEquals(1, runtime.taps)
         assertEquals(0, runtime.backs)
     }
