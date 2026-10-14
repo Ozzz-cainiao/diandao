@@ -257,7 +257,7 @@ class ShizukuRuntimeClient(
                     check(markers.all { page.findExact(it) != null }) { "远端完成证据不足" }
                     evidence?.page(xml, "$packageName/远端完成确认")
                     remoteHomeReturned = true
-                    log("[任务收尾] 远端确认完成并HOME，已恢复点到处理结果")
+                    log("[任务收尾] 远端已核对返回页面并HOME，已恢复点到处理结果；领奖状态以任务结果为准")
                     return page
                 }
                 override fun completeAndReturnHome(packageName: String, markers: List<String>) {

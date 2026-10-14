@@ -18,14 +18,54 @@ internal object TaobaoQuizTask {
             ?: error("题目尚未支持，停止答题；不会随机选择")
         return checkNotNull(page.findExact(answers.getValue(question))) { "答案选项未确认" }
     }
-    fun run(runtime: AutomationRuntime, read: () -> UiSnapshot): UiSnapshot {
-        var page = read()
+    data class Outcome(val page: UiSnapshot, val skippedReason: String? = null)
+
+    private fun load(runtime: AutomationRuntime, read: () -> UiSnapshot, initial: UiSnapshot?): UiSnapshot {
+        var page = initial ?: read()
         for (attempt in 1..6) {
             if (page.findExact("淘金币趣味答题") != null &&
-                page.nodes.any { it.usable && it.text.endsWith("单选题") }) break
+                page.nodes.any { it.usable && it.text.startsWith("1.") }) break
             runtime.pause(750)
             page = read()
         }
+        return page
+    }
+
+    /** Only an identified unsupported question may be skipped; failures after a tap still stop. */
+    fun runOrSkip(runtime: AutomationRuntime, read: () -> UiSnapshot, initial: UiSnapshot? = null): Outcome {
+        val page = load(runtime, read, initial)
+        check(page.findExact("淘金币趣味答题") != null) { "未确认趣味课堂页面，不能跳过" }
+        val question = checkNotNull(page.nodes.singleOrNull { it.usable && it.text.startsWith("1.") }) {
+            "题目仍未加载或不唯一，不能跳过未知页面"
+        }
+        if (question.text in answers) return Outcome(runLoaded(runtime, read, page))
+        val reason = if (question.text.endsWith("多选题")) "多选题暂未支持：${question.text}"
+            else "题库未收录或题型未支持：${question.text}"
+        val submitTop = page.findExact("我选好了")?.top ?: Int.MAX_VALUE
+        val choices = page.nodes.filter { it.usable && it.top >= question.bottom && it.bottom <= submitTop }
+            .map { it.text.ifBlank { it.description } }
+            .filter { it.isNotBlank() && !it.matches(Regex("[A-Z]")) && !it.startsWith("题目来源") }
+            .distinct().take(12)
+        if (choices.isNotEmpty()) runtime.log("[课堂选项] ${choices.joinToString(" / ")}")
+        runtime.log("[课堂跳过] $reason；不选择、不提交，返回面板继续其他任务")
+        runtime.back(PACKAGE)
+        runtime.pause(1000)
+        var panel = read()
+        repeat(6) {
+            if (panel.findExact("今日速赚") == null) {
+                runtime.pause(750)
+                panel = read()
+            }
+        }
+        check(panel.findExact("今日速赚") != null) { "跳过课堂后未回到任务面板，停止" }
+        return Outcome(panel, reason)
+    }
+
+    fun run(runtime: AutomationRuntime, read: () -> UiSnapshot): UiSnapshot =
+        runLoaded(runtime, read, load(runtime, read, null))
+
+    private fun runLoaded(runtime: AutomationRuntime, read: () -> UiSnapshot, initial: UiSnapshot): UiSnapshot {
+        var page = initial
         val option = answer(page)
         runtime.log("[课堂] 匹配已确认题目，按答案文字选择：${option.text}")
         runtime.tap(PACKAGE, option.x, option.y)

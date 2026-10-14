@@ -80,4 +80,43 @@ class TaobaoQuizTaskTest {
         assertEquals(2, runtime.taps)
         assertEquals(0, runtime.backs)
     }
+    @Test fun multiSelectQuestionIsSkippedWithoutAnyAnswerTap() {
+        val runtime = Runtime()
+        val question = UiSnapshot(listOf(node("淘金币趣味答题"),
+            node("1. 以下哪位人物有可能成为淘金币的忠实用户？多选题"), node("沈万三"), node("赵公明")))
+        val panel = UiSnapshot(listOf(node("今日速赚")))
+        val outcome = TaobaoQuizTask.runOrSkip(runtime, { panel }, question)
+        assertEquals(panel, outcome.page)
+        assertTrue(outcome.skippedReason.orEmpty().contains("多选题"))
+        assertEquals(0, runtime.taps)
+        assertEquals(1, runtime.backs)
+    }
+    @Test fun newSingleChoiceQuestionIsAlsoSkipped() {
+        val runtime = Runtime()
+        val question = UiSnapshot(listOf(node("淘金币趣味答题"), node("1. 新的问题单选题")))
+        val outcome = TaobaoQuizTask.runOrSkip(runtime, { UiSnapshot(listOf(node("今日速赚"))) }, question)
+        assertTrue(outcome.skippedReason.orEmpty().contains("新的问题"))
+        assertEquals(0, runtime.taps)
+    }
+    @Test fun unidentifiedPageCannotBeDismissedAsUnknownQuiz() {
+        val runtime = Runtime()
+        assertTrue(runCatching { TaobaoQuizTask.runOrSkip(runtime, read = {
+            UiSnapshot(listOf(node("1. 新的问题单选题")))
+        }) }.isFailure)
+        assertEquals(0, runtime.backs)
+        assertEquals(0, runtime.taps)
+    }
+    @Test fun skipMustActuallyReturnToPanel() {
+        val runtime = Runtime()
+        val question = UiSnapshot(listOf(node("淘金币趣味答题"), node("1. 新的问题多选题")))
+        assertTrue(runCatching { TaobaoQuizTask.runOrSkip(runtime, { question }, question) }.isFailure)
+        assertEquals(1, runtime.backs)
+        assertEquals(0, runtime.taps)
+    }
+    @Test fun selectionFailureIsNotSwallowedByFallback() {
+        val runtime = Runtime()
+        assertTrue(runCatching { TaobaoQuizTask.runOrSkip(runtime, { question() }, question()) }.isFailure)
+        assertEquals(1, runtime.taps)
+        assertEquals(0, runtime.backs)
+    }
 }

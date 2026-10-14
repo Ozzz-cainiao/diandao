@@ -50,16 +50,30 @@ class TaobaoQuickTaskTest {
     private class Runtime : AutomationRuntime {
         var swipes = 0
         var homes = 0
+        var taps = 0
+        var visits = 0
+        var completionChecks = 0
+        var farmResult: UiSnapshot? = null
         var failSwipe = false
         var failHome = false
         val pages = java.util.ArrayDeque<String>()
         override fun launch(packageName: String) {}
-        override fun tap(packageName: String, x: Int, y: Int) {}
+        override fun tap(packageName: String, x: Int, y: Int) { taps++ }
+        override fun visitAndFinish(packageName: String, x: Int, y: Int, visitPackage: String,
+                                    title: String, markers: List<String>): UiSnapshot {
+            visits++
+            assertEquals(listOf("今日速赚"), markers)
+            return checkNotNull(farmResult)
+        }
         override fun readUi(packageName: String) = pages.removeFirst()
         override fun pause(milliseconds: Long) {}
         override fun log(message: String) {}
         override fun back(expectedPackage: String) {}
         override fun returnHome(expectedPackage: String) { check(!failHome) { "前台切换" }; homes++ }
+        override fun completeAndReturnHome(packageName: String, markers: List<String>) {
+            completionChecks++
+            returnHome(packageName)
+        }
         override fun swipe(packageName: String, startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Int) {
             check(!failSwipe) { "任务取消或前台切换" }
             assertEquals("com.taobao.taobao", packageName)
@@ -200,5 +214,34 @@ class TaobaoQuickTaskTest {
     @Test fun ambiguousRewardsAreRejected() {
         val page = UiSnapshot(listOf(node("好物沉浸看", 100, 100), node("+30", 500, 100), node("+30", 650, 100)))
         assertNull(TaobaoQuickTask.reward(page, "好物沉浸看", "+30"))
+    }
+    @Test fun resumedUnknownQuizIsNotRevisitedAndOtherTasksContinueToHome() {
+        val runtime = Runtime()
+        val quiz = UiSnapshot(listOf(node("淘金币趣味答题", 0, 0), node("1. 新的问题多选题", 0, 100)))
+        val panel = UiSnapshot(listOf(node("今日速赚", 0, 0),
+            node("淘金币趣味课堂", 100, 200), node("+30", 500, 200),
+            node("好物沉浸看", 100, 400), node("+30", 500, 400),
+            node("去蚂蚁庄园逛逛哟", 100, 600), node("+50", 500, 600)))
+        val remaining = UiSnapshot(panel.nodes.filterNot { it.text == "+30" && it.top == 400 })
+        runtime.farmResult = UiSnapshot(remaining.nodes.filterNot { it.text == "+50" })
+        runtime.pages.addAll(listOf(xml(quiz), xml(panel), xml(pending()), xml(done()), xml(remaining)))
+        val result = TaobaoQuickTask.runAndReturnHome(runtime)
+        assertTrue(result.contains("课堂已跳过"))
+        assertTrue(result.contains("今日奖励尚未全部领取"))
+        assertFalse(result.contains("今日快速赚奖励已拿完"))
+        assertEquals(1, runtime.taps) // Only opens browsing, never reopens or answers the quiz.
+        assertEquals(1, runtime.swipes)
+        assertEquals(1, runtime.visits)
+        assertEquals(1, runtime.homes)
+    }
+    @Test fun wordsInUnknownQuestionCannotImpersonateTotalCompletion() {
+        val runtime = Runtime()
+        val quiz = UiSnapshot(listOf(node("淘金币趣味答题", 0, 0),
+            node("1. 淘宝确认：今日快速赚奖励已拿完是什么意思多选题", 0, 100)))
+        runtime.pages.addAll(listOf(xml(quiz), xml(UiSnapshot(listOf(node("今日速赚", 0, 0))))))
+        val result = TaobaoQuickTask.runAndReturnHome(runtime)
+        assertTrue(result.contains("今日奖励尚未全部领取"))
+        assertEquals(0, runtime.completionChecks)
+        assertEquals(1, runtime.homes)
     }
 }
